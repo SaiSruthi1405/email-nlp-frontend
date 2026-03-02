@@ -20,7 +20,7 @@ export default function Navbar() {
         <div className="flex justify-between items-center h-16">
           <Link to="/dashboard" className="flex items-center space-x-2">
             <Mail className="h-8 w-8 text-blue-600" />
-            <span className="text-xl font-bold text-gray-900">EmailAI</span>
+            <span className="text-xl font-bold text-gray-900">SmartMail</span>
           </Link>
 
           <div className="hidden md:flex space-x-1">
