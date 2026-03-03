@@ -12,4 +12,5 @@ const rawEmailSchema = new mongoose.Schema(
   { timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } }
 );
 
-module.exports = mongoose.model("RawEmail", rawEmailSchema);
+module.exports = mongoose.model("RawEmail", rawEmailSchema, "rawEmails");
+

@@ -1,20 +1,38 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Navbar from '../components/Navbar';
-import CategoryBadge from '../components/CategoryBadge';
-import PriorityBadge from '../components/PriorityBadge';
-import { mockClassifiedEmails } from '../mockData';
-import { ClassifiedEmail } from '../types';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import Navbar from "../components/Navbar";
+import CategoryBadge from "../components/CategoryBadge";
+import PriorityBadge from "../components/PriorityBadge";
+import { ClassifiedEmail } from "../types";
 
-type FilterType = 'all' | 'job' | 'event' | 'important' | 'others' | 'spam';
+type FilterType = "all" | "job" | "event" | "important" | "others" | "spam";
 
 export default function Inbox() {
   const navigate = useNavigate();
-  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
 
-  const filteredEmails = activeFilter === 'all'
-    ? mockClassifiedEmails
-    : mockClassifiedEmails.filter(email => email.category === activeFilter);
+  const [emails, setEmails] = useState<ClassifiedEmail[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<FilterType>("all");
+
+  useEffect(() => {
+    const fetchEmails = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/emails");
+        const data = await res.json();
+        setEmails(data);
+      } catch (err) {
+        console.error("Failed to load emails", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEmails();
+  }, []);
+
+  const filteredEmails =
+    activeFilter === "all"
+      ? emails
+      : emails.filter((email) => email.category === activeFilter);
 
   const handleEmailClick = (emailId: string) => {
     navigate(`/email/${emailId}`);
@@ -30,22 +48,56 @@ export default function Inbox() {
     if (diffHours < 24) {
       return `${diffHours}h ago`;
     } else if (diffDays === 1) {
-      return 'Yesterday';
+      return "Yesterday";
     } else if (diffDays < 7) {
       return `${diffDays} days ago`;
     } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
     }
   };
 
   const filters: { value: FilterType; label: string; count: number }[] = [
-    { value: 'all', label: 'All', count: mockClassifiedEmails.length },
-    { value: 'job', label: 'Jobs', count: mockClassifiedEmails.filter(e => e.category === 'job').length },
-    { value: 'event', label: 'Events', count: mockClassifiedEmails.filter(e => e.category === 'event').length },
-    { value: 'important', label: 'Important', count: mockClassifiedEmails.filter(e => e.category === 'important').length },
-    { value: 'others', label: 'Others', count: mockClassifiedEmails.filter(e => e.category === 'others').length },
-    { value: 'spam', label: 'Spam', count: mockClassifiedEmails.filter(e => e.category === 'spam').length },
+    { value: "all", label: "All", count: emails.length },
+    {
+      value: "job",
+      label: "Jobs",
+      count: emails.filter((e) => e.category === "job").length,
+    },
+    {
+      value: "event",
+      label: "Events",
+      count: emails.filter((e) => e.category === "event").length,
+    },
+    {
+      value: "important",
+      label: "Important",
+      count: emails.filter((e) => e.category === "important").length,
+    },
+    {
+      value: "others",
+      label: "Others",
+      count: emails.filter((e) => e.category === "others").length,
+    },
+    {
+      value: "spam",
+      label: "Spam",
+      count: emails.filter((e) => e.category === "spam").length,
+    },
   ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <p className="text-gray-600">Loading emails...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -66,16 +118,18 @@ export default function Inbox() {
                   onClick={() => setActiveFilter(filter.value)}
                   className={`px-6 py-4 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${
                     activeFilter === filter.value
-                      ? 'border-blue-600 text-blue-600 bg-white'
-                      : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      ? "border-blue-600 text-blue-600 bg-white"
+                      : "border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                   }`}
                 >
                   {filter.label}
-                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
-                    activeFilter === filter.value
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-gray-200 text-gray-700'
-                  }`}>
+                  <span
+                    className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+                      activeFilter === filter.value
+                        ? "bg-blue-100 text-blue-700"
+                        : "bg-gray-200 text-gray-700"
+                    }`}
+                  >
                     {filter.count}
                   </span>
                 </button>
@@ -113,17 +167,19 @@ export default function Inbox() {
                   >
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">
-                        {email.raw_email?.subject}
+                        {email.raw_email?.subject || email.job_title || "(no subject)"}
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-600">
-                        {email.raw_email?.sender}
+                        {email.raw_email?.sender ?? ""}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">
-                        {formatDate(email.raw_email?.date_received || email.created_at)}
+                        {formatDate(
+                          email.raw_email?.date_received || email.created_at
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -140,7 +196,9 @@ export default function Inbox() {
 
           {filteredEmails.length === 0 && (
             <div className="text-center py-12">
-              <p className="text-gray-500">No emails found in this category</p>
+              <p className="text-gray-500">
+                No emails found in this category
+              </p>
             </div>
           )}
         </div>
