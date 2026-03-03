@@ -6,6 +6,8 @@ import Jobs from './pages/Jobs';
 import Events from './pages/Events';
 import EmailDetails from './pages/EmailDetails';
 import Settings from './pages/Settings';
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
 
 function App() {
   return (
@@ -18,6 +20,8 @@ function App() {
         <Route path="/events" element={<Events />} />
         <Route path="/email/:id" element={<EmailDetails />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>

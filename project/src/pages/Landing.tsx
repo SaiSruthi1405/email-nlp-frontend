@@ -13,8 +13,14 @@ export default function Landing() {
   };
 
   const handleStartAnalyzing = () => {
-    navigate('/dashboard');
-  };
+  const isLoggedIn = localStorage.getItem("user");
+
+  if (isLoggedIn) {
+    navigate("/dashboard");
+  } else {
+    navigate("/login");
+  }
+};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50">
@@ -85,21 +91,11 @@ export default function Landing() {
             </div>
           ) : (
             <div>
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                <div className="flex items-center space-x-3">
-                  <CheckCircle className="h-6 w-6 text-green-600 flex-shrink-0" />
-                  <div>
-                    <p className="font-medium text-green-900">Connected Successfully</p>
-                    <p className="text-sm text-green-700">{userEmail}</p>
-                  </div>
-                </div>
-              </div>
-
               <button
                 onClick={handleStartAnalyzing}
                 className="w-full bg-blue-600 text-white py-4 px-6 rounded-xl font-semibold hover:bg-blue-700 transition-colors shadow-sm"
               >
-                Start Analyzing Emails
+                Login/SignUp
               </button>
             </div>
           )}
