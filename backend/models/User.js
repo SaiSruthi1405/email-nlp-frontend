@@ -2,11 +2,11 @@ const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
   {
-    email: { type: String, required: true },
-    gmailToken: { type: String },
-    lastSync: { type: Date }
+    email: { type: String, required: true, unique: true },
+    gmailToken: { type: mongoose.Schema.Types.Mixed }, // <= important
+    lastSync: { type: Date, default: null },
   },
-  { timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } }
+  { timestamps: true }
 );
 
 module.exports = mongoose.model("User", userSchema);

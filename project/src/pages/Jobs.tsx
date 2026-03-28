@@ -1,46 +1,88 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { MapPin, Briefcase, Calendar, ExternalLink } from 'lucide-react';
-import Navbar from '../components/Navbar';
-import { mockClassifiedEmails } from '../mockData';
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { MapPin, Briefcase, Calendar, ExternalLink } from "lucide-react";
+import Navbar from "../components/Navbar";
+import { ClassifiedEmail } from "../types";
 
 export default function Jobs() {
   const navigate = useNavigate();
-  const jobEmails = mockClassifiedEmails.filter(email => email.category === 'job');
 
-  const [companyFilter, setCompanyFilter] = useState('');
-  const [locationFilter, setLocationFilter] = useState('');
-  const [skillFilter, setSkillFilter] = useState('');
+  const [jobEmails, setJobEmails] = useState<ClassifiedEmail[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const companies = [...new Set(jobEmails.map(email => email.company).filter(Boolean))];
-  const locations = [...new Set(jobEmails.map(email => email.location).filter(Boolean))];
+  const [companyFilter, setCompanyFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
+  const [skillFilter, setSkillFilter] = useState("");
 
-  const filteredJobs = jobEmails.filter(job => {
+  useEffect(() => {
+    const fetchJobs = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/emails");
+        if (!res.ok) throw new Error("Failed to load emails");
+        const data: ClassifiedEmail[] = await res.json();
+        setJobEmails(data.filter((email) => email.category === "job"));
+      } catch (err) {
+        console.error("Failed to load job emails", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchJobs();
+  }, []);
+
+  const companies = [
+    ...new Set(jobEmails.map((email) => email.company).filter(Boolean)),
+  ];
+  const locations = [
+    ...new Set(jobEmails.map((email) => email.location).filter(Boolean)),
+  ];
+
+  const filteredJobs = jobEmails.filter((job) => {
     if (companyFilter && job.company !== companyFilter) return false;
     if (locationFilter && job.location !== locationFilter) return false;
-    if (skillFilter && !job.skills?.some(skill =>
-      skill.toLowerCase().includes(skillFilter.toLowerCase())
-    )) return false;
+    if (
+      skillFilter &&
+      !job.skills?.some((skill) =>
+        skill.toLowerCase().includes(skillFilter.toLowerCase())
+      )
+    )
+      return false;
     return true;
   });
 
-  const formatDeadline = (deadline?: string) => {
-    if (!deadline) return 'No deadline';
+  const formatDeadline = (deadline?: string | null) => {
+    if (!deadline) return "No deadline";
     const date = new Date(deadline);
     const now = new Date();
     const diffMs = date.getTime() - now.getTime();
     const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
-    if (diffDays < 0) return 'Expired';
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Tomorrow';
+    if (diffDays < 0) return "Expired";
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Tomorrow";
     if (diffDays <= 7) return `${diffDays} days left`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   };
 
   const handleViewDetails = (jobId: string) => {
     navigate(`/email/${jobId}`);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <p className="text-gray-600">Loading jobs...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -50,7 +92,8 @@ export default function Jobs() {
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Job Opportunities</h1>
           <p className="text-gray-600 mt-1">
-            {filteredJobs.length} job{filteredJobs.length !== 1 ? 's' : ''} found
+            {filteredJobs.length} job
+            {filteredJobs.length !== 1 ? "s" : ""} found
           </p>
         </div>
 
@@ -67,8 +110,10 @@ export default function Jobs() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">All Companies</option>
-                {companies.map(company => (
-                  <option key={company} value={company}>{company}</option>
+                {companies.map((company) => (
+                  <option key={company} value={company}>
+                    {company}
+                  </option>
                 ))}
               </select>
             </div>
@@ -83,8 +128,10 @@ export default function Jobs() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">All Locations</option>
-                {locations.map(location => (
-                  <option key={location} value={location}>{location}</option>
+                {locations.map((location) => (
+                  <option key={location} value={location}>
+                    {location}
+                  </option>
                 ))}
               </select>
             </div>
@@ -106,9 +153,9 @@ export default function Jobs() {
           {(companyFilter || locationFilter || skillFilter) && (
             <button
               onClick={() => {
-                setCompanyFilter('');
-                setLocationFilter('');
-                setSkillFilter('');
+                setCompanyFilter("");
+                setLocationFilter("");
+                setSkillFilter("");
               }}
               className="mt-4 text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
@@ -126,7 +173,7 @@ export default function Jobs() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    {job.job_title || 'Position Available'}
+                    {job.job_title || job.raw_email?.subject || "Job Opportunity"}
                   </h3>
 
                   <div className="flex flex-wrap gap-4 mb-4">
@@ -147,14 +194,17 @@ export default function Jobs() {
                     {job.application_deadline && (
                       <div className="flex items-center text-gray-600">
                         <Calendar className="h-4 w-4 mr-2" />
-                        <span className="text-sm">{formatDeadline(job.application_deadline)}</span>
+                        <span className="text-sm">
+                          {formatDeadline(job.application_deadline)}
+                        </span>
                       </div>
                     )}
                   </div>
 
                   {job.experience_level && (
                     <p className="text-sm text-gray-600 mb-3">
-                      <span className="font-medium">Experience:</span> {job.experience_level}
+                      <span className="font-medium">Experience:</span>{" "}
+                      {job.experience_level}
                     </p>
                   )}
 
@@ -185,7 +235,9 @@ export default function Jobs() {
 
           {filteredJobs.length === 0 && (
             <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
-              <p className="text-gray-500">No jobs found matching your filters</p>
+              <p className="text-gray-500">
+                No jobs found matching your filters
+              </p>
             </div>
           )}
         </div>

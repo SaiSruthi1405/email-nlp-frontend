@@ -1,19 +1,49 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Mail, CheckCircle, Shield, Zap } from 'lucide-react';
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Mail, CheckCircle, Shield, Zap } from "lucide-react";
 
 export default function Landing() {
   const navigate = useNavigate();
-  const [isConnected, setIsConnected] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
 
+  // whether Gmail is connected
+  const [isConnected, setIsConnected] = useState(false);
+  // just for showing the green box; we’ll keep it simple for now
+  const [userEmail, setUserEmail] = useState("");
+  // while we are calling /api/auth-status
+  const [loadingStatus, setLoadingStatus] = useState(true);
+
+  // 1) On page load, ask backend if Gmail is connected
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/auth-status");
+        const data = await res.json();
+        setIsConnected(data.gmailConnected);
+        // if you later return email from backend, set it here
+        // setUserEmail(data.email);
+      } catch (err) {
+        console.error("Failed to fetch auth status", err);
+        setIsConnected(false);
+      } finally {
+        setLoadingStatus(false);
+      }
+    };
+
+    checkStatus();
+  }, []);
+
+  // 2) If not connected, open Google OAuth window
   const handleConnectGmail = () => {
-    setIsConnected(true);
-    setUserEmail('student@college.edu');
+    window.open(
+      "http://localhost:5000/auth/google",
+      "_blank",
+      "width=500,height=600"
+    );
   };
 
+  // 3) If already connected, go to dashboard (where you can sync/show emails)
   const handleStartAnalyzing = () => {
-    navigate('/dashboard');
+    navigate("/dashboard");
   };
 
   return (
@@ -29,7 +59,8 @@ export default function Landing() {
             AI-Powered Email Classification
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Automatically organize your emails into Jobs, Events, and Important categories using advanced machine learning
+            Automatically organize your emails into Jobs, Events, and Important
+            categories using advanced machine learning
           </p>
         </div>
 
@@ -38,9 +69,12 @@ export default function Landing() {
             <div className="bg-blue-100 p-3 rounded-lg w-fit mb-4">
               <Zap className="h-6 w-6 text-blue-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Smart Classification</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Smart Classification
+            </h3>
             <p className="text-gray-600">
-              AI categorizes your emails into Jobs, Events, Important, and Others automatically
+              AI categorizes your emails into Jobs, Events, Important, and
+              Others automatically
             </p>
           </div>
 
@@ -48,9 +82,12 @@ export default function Landing() {
             <div className="bg-green-100 p-3 rounded-lg w-fit mb-4">
               <CheckCircle className="h-6 w-6 text-green-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Job Extraction</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Job Extraction
+            </h3>
             <p className="text-gray-600">
-              Automatically extracts job titles, companies, skills, and deadlines from job emails
+              Automatically extracts job titles, companies, skills, and
+              deadlines from job emails
             </p>
           </div>
 
@@ -58,7 +95,9 @@ export default function Landing() {
             <div className="bg-orange-100 p-3 rounded-lg w-fit mb-4">
               <Shield className="h-6 w-6 text-orange-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Spam Filtering</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Spam Filtering
+            </h3>
             <p className="text-gray-600">
               Intelligent spam detection keeps your inbox clean and focused
             </p>
@@ -70,7 +109,11 @@ export default function Landing() {
             Get Started
           </h2>
 
-          {!isConnected ? (
+          {loadingStatus ? (
+            <p className="text-center text-gray-500">
+              Checking Gmail connection…
+            </p>
+          ) : !isConnected ? (
             <div>
               <button
                 onClick={handleConnectGmail}
@@ -89,8 +132,12 @@ export default function Landing() {
                 <div className="flex items-center space-x-3">
                   <CheckCircle className="h-6 w-6 text-green-600 flex-shrink-0" />
                   <div>
-                    <p className="font-medium text-green-900">Connected Successfully</p>
-                    <p className="text-sm text-green-700">{userEmail}</p>
+                    <p className="font-medium text-green-900">
+                      Connected Successfully
+                    </p>
+                    <p className="text-sm text-green-700">
+                      {userEmail || "Your Gmail account"}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -107,7 +154,8 @@ export default function Landing() {
 
         <div className="mt-12 text-center">
           <p className="text-sm text-gray-500">
-            Your data is secure and private. We only access emails for classification purposes.
+            Your data is secure and private. We only access emails for
+            classification purposes.
           </p>
         </div>
       </div>

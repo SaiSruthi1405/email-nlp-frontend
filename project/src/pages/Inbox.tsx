@@ -1,25 +1,34 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
-import CategoryBadge from "../components/CategoryBadge";
-import PriorityBadge from "../components/PriorityBadge";
-import { ClassifiedEmail } from "../types";
 
-type FilterType = "all" | "job" | "event" | "important" | "others" | "spam";
+type RawEmailListItem = {
+  id: string;
+  subject: string;
+  sender: string;
+  dateReceived: string;
+};
 
 export default function Inbox() {
   const navigate = useNavigate();
 
-  const [emails, setEmails] = useState<ClassifiedEmail[]>([]);
+  const [emails, setEmails] = useState<RawEmailListItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<FilterType>("all");
 
   useEffect(() => {
     const fetchEmails = async () => {
       try {
         const res = await fetch("http://localhost:5000/api/emails");
+        if (!res.ok) throw new Error("Failed to load emails");
         const data = await res.json();
-        setEmails(data);
+        setEmails(
+          data.map((e: any) => ({
+            id: e.id,
+            subject: e.subject || "(no subject)",
+            sender: e.sender || "",
+            dateReceived: e.dateReceived,
+          }))
+        );
       } catch (err) {
         console.error("Failed to load emails", err);
       } finally {
@@ -28,11 +37,6 @@ export default function Inbox() {
     };
     fetchEmails();
   }, []);
-
-  const filteredEmails =
-    activeFilter === "all"
-      ? emails
-      : emails.filter((email) => email.category === activeFilter);
 
   const handleEmailClick = (emailId: string) => {
     navigate(`/email/${emailId}`);
@@ -59,35 +63,6 @@ export default function Inbox() {
     }
   };
 
-  const filters: { value: FilterType; label: string; count: number }[] = [
-    { value: "all", label: "All", count: emails.length },
-    {
-      value: "job",
-      label: "Jobs",
-      count: emails.filter((e) => e.category === "job").length,
-    },
-    {
-      value: "event",
-      label: "Events",
-      count: emails.filter((e) => e.category === "event").length,
-    },
-    {
-      value: "important",
-      label: "Important",
-      count: emails.filter((e) => e.category === "important").length,
-    },
-    {
-      value: "others",
-      label: "Others",
-      count: emails.filter((e) => e.category === "others").length,
-    },
-    {
-      value: "spam",
-      label: "Spam",
-      count: emails.filter((e) => e.category === "spam").length,
-    },
-  ];
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -106,37 +81,12 @@ export default function Inbox() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Inbox</h1>
-          <p className="text-gray-600 mt-1">AI-powered email classification</p>
+          <p className="text-gray-600 mt-1">
+            AI-powered email classification (raw emails view)
+          </p>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="border-b border-gray-200 bg-gray-50">
-            <div className="flex overflow-x-auto">
-              {filters.map((filter) => (
-                <button
-                  key={filter.value}
-                  onClick={() => setActiveFilter(filter.value)}
-                  className={`px-6 py-4 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${
-                    activeFilter === filter.value
-                      ? "border-blue-600 text-blue-600 bg-white"
-                      : "border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                  }`}
-                >
-                  {filter.label}
-                  <span
-                    className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
-                      activeFilter === filter.value
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-gray-200 text-gray-700"
-                    }`}
-                  >
-                    {filter.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -150,16 +100,10 @@ export default function Inbox() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Category
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Priority
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredEmails.map((email) => (
+                {emails.map((email) => (
                   <tr
                     key={email.id}
                     onClick={() => handleEmailClick(email.id)}
@@ -167,26 +111,18 @@ export default function Inbox() {
                   >
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">
-                        {email.raw_email?.subject || email.job_title || "(no subject)"}
+                        {email.subject}
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-600">
-                        {email.raw_email?.sender ?? ""}
+                        {email.sender}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">
-                        {formatDate(
-                          email.raw_email?.date_received || email.created_at
-                        )}
+                        {formatDate(email.dateReceived)}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <CategoryBadge category={email.category} size="sm" />
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <PriorityBadge priority={email.priority} size="sm" />
                     </td>
                   </tr>
                 ))}
@@ -194,11 +130,9 @@ export default function Inbox() {
             </table>
           </div>
 
-          {filteredEmails.length === 0 && (
+          {emails.length === 0 && (
             <div className="text-center py-12">
-              <p className="text-gray-500">
-                No emails found in this category
-              </p>
+              <p className="text-gray-500">No emails found.</p>
             </div>
           )}
         </div>
