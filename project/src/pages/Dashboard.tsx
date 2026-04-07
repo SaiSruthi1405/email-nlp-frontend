@@ -35,16 +35,17 @@ export default function Dashboard() {
 
   const stats = {
     total: emails.length,
-    jobs: emails.filter((e) => e.category === "job").length,
-    events: emails.filter((e) => e.category === "event").length,
+    jobs: emails.filter((e) => e.category === "jobs").length,
+    events: emails.filter((e) => e.category === "events").length,
     important: emails.filter((e) => e.category === "important").length,
     spam: emails.filter((e) => e.category === "spam").length,
   };
 
   const recentEmails = emails.slice(0, 5);
 
+  // use "events" (plural) here to match Mongo
   const upcomingEvents = emails
-    .filter((email) => email.category === "event" && email.event_date)
+    .filter((email) => email.category === "events" && email.event_date)
     .filter((email) => new Date(email.event_date!) > new Date()).length;
 
   if (loading) {
@@ -198,9 +199,9 @@ export default function Dashboard() {
                 >
                   <div
                     className={`p-2 rounded-lg ${
-                      email.category === "job"
+                      email.category === "jobs"
                         ? "bg-blue-100"
-                        : email.category === "event"
+                        : email.category === "events"
                         ? "bg-green-100"
                         : email.category === "important"
                         ? "bg-yellow-100"
@@ -209,10 +210,10 @@ export default function Dashboard() {
                         : "bg-gray-100"
                     }`}
                   >
-                    {email.category === "job" && (
+                    {email.category === "jobs" && (
                       <Briefcase className="h-4 w-4 text-blue-600" />
                     )}
-                    {email.category === "event" && (
+                    {email.category === "events" && (
                       <Calendar className="h-4 w-4 text-green-600" />
                     )}
                     {email.category === "important" && (
@@ -227,7 +228,9 @@ export default function Dashboard() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">
-                      {email.raw_email?.subject || email.job_title || "(no subject)"}
+                      {email.raw_email?.subject ||
+                        email.job_title ||
+                        "(no subject)"}
                     </p>
                     <p className="text-xs text-gray-500 truncate">
                       {email.raw_email?.sender}

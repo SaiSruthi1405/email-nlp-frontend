@@ -7,7 +7,8 @@ const rawEmailSchema = new mongoose.Schema(
     sender: { type: String, required: true },
     body: { type: String, required: true },
     dateReceived: { type: Date, required: true },
-    gmailId: { type: String }
+    gmailId: { type: String },
+    category: { type: String, default: "others" }, 
   },
   { timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } }
 );

@@ -8,12 +8,36 @@ export default function Settings() {
   const [eventDetection, setEventDetection] = useState(true);
   const [spamFiltering, setSpamFiltering] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
-  const handleSync = () => {
-    setIsSyncing(true);
-    setTimeout(() => {
+  const handleSync = async () => {
+    try {
+      setIsSyncing(true);
+      setSyncMessage(null);
+      setSyncError(null);
+
+      const res = await fetch('http://localhost:5000/api/sync-emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Sync failed');
+      }
+
+      const data = await res.json();
+      // data.synced, data.emails from backend
+      setSyncMessage(`Synced ${data.synced} emails successfully.`);
+    } catch (err: any) {
+      console.error('SYNC ERROR (frontend):', err);
+      setSyncError(err.message || 'Failed to sync emails');
+    } finally {
       setIsSyncing(false);
-    }, 2000);
+    }
   };
 
   const formatLastSync = (dateString: string) => {
@@ -41,6 +65,7 @@ export default function Settings() {
         </div>
 
         <div className="space-y-6">
+          {/* Account Info */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
               <h2 className="text-lg font-semibold text-gray-900 flex items-center">
@@ -82,12 +107,14 @@ export default function Settings() {
             </div>
           </div>
 
+          {/* Classification Settings */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-white">
               <h2 className="text-lg font-semibold text-gray-900">Classification Settings</h2>
             </div>
 
             <div className="p-6 space-y-4">
+              {/* Job Extraction */}
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                 <div className="flex-1">
                   <p className="font-medium text-gray-900">Enable Job Extraction</p>
@@ -109,6 +136,7 @@ export default function Settings() {
                 </button>
               </div>
 
+              {/* Event Detection */}
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                 <div className="flex-1">
                   <p className="font-medium text-gray-900">Enable Event Detection</p>
@@ -130,6 +158,7 @@ export default function Settings() {
                 </button>
               </div>
 
+              {/* Spam Filtering */}
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                 <div className="flex-1">
                   <p className="font-medium text-gray-900">Filter Spam</p>
@@ -153,6 +182,7 @@ export default function Settings() {
             </div>
           </div>
 
+          {/* Email Synchronization */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-white">
               <h2 className="text-lg font-semibold text-gray-900">Email Synchronization</h2>
@@ -183,9 +213,22 @@ export default function Settings() {
                   </p>
                 </div>
               )}
+
+              {syncMessage && (
+                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-sm text-green-800">{syncMessage}</p>
+                </div>
+              )}
+
+              {syncError && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-800">{syncError}</p>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* About */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">About</h2>
             <p className="text-sm text-gray-600 mb-2">
@@ -193,7 +236,7 @@ export default function Settings() {
               categorize your emails into Jobs, Events, Important, and Others.
             </p>
             <p className="text-sm text-gray-500">
-              ML Service: http://127.0.0.1:8000
+              ML Service: [http://127.0.0.1:8000](http://127.0.0.1:8000)
             </p>
           </div>
         </div>
