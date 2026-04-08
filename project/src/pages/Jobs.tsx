@@ -1,67 +1,121 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MapPin, Briefcase, Calendar, ExternalLink } from "lucide-react";
+import { ChevronRight, Search, Upload, RefreshCcw, FileText } from "lucide-react";
 import Navbar from "../components/Navbar";
-import { ClassifiedEmail } from "../types";
+
+type RawEmailBackend = {
+  subject?: string;
+  sender?: string;
+  body?: string;
+  date_received?: string;
+  gmail_id?: string;
+};
+
+type JobEmail = {
+  _id?: string;
+  id?: string;
+  category?: string;
+  company?: string;
+  created_at?: string;
+  subject?: string;
+  sender?: string;
+  date?: string;
+  dateReceived?: string;
+  rawemail?: any;
+  raw_email?: RawEmailBackend;
+};
 
 export default function Jobs() {
   const navigate = useNavigate();
 
-  const [jobEmails, setJobEmails] = useState<ClassifiedEmail[]>([]);
+  const [jobs, setJobs] = useState<JobEmail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const [companyFilter, setCompanyFilter] = useState("");
-  const [locationFilter, setLocationFilter] = useState("");
-  const [skillFilter, setSkillFilter] = useState("");
+  // resume upload state
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [resumeName, setResumeName] = useState("Sai_Sruthi_Resume.pdf");
+  const [uploadingResume, setUploadingResume] = useState(false);
+  const [resumeMessage, setResumeMessage] = useState("");
+
+  const fetchJobEmails = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await fetch("http://localhost:5000/api/emails/jobs");
+      if (!res.ok) {
+        throw new Error(`Failed to fetch job emails: ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      if (!Array.isArray(data)) {
+        throw new Error("Jobs API did not return an array");
+      }
+
+      setJobs(data);
+    } catch (err) {
+      console.error("Failed to load job emails", err);
+      setError("Could not load job emails");
+      setJobs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchJobs = async () => {
-      try {
-        const res = await fetch("http://localhost:5000/api/emails");
-        if (!res.ok) throw new Error("Failed to load emails");
-        const data: ClassifiedEmail[] = await res.json();
-        setJobEmails(data.filter((email) => email.category === "job"));
-      } catch (err) {
-        console.error("Failed to load job emails", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchJobs();
+    fetchJobEmails();
   }, []);
 
-  const companies = [
-    ...new Set(jobEmails.map((email) => email.company).filter(Boolean)),
-  ];
-  const locations = [
-    ...new Set(jobEmails.map((email) => email.location).filter(Boolean)),
-  ];
+  const getJobId = (job: JobEmail): string =>
+    String(job.id || job._id || "");
 
-  const filteredJobs = jobEmails.filter((job) => {
-    if (companyFilter && job.company !== companyFilter) return false;
-    if (locationFilter && job.location !== locationFilter) return false;
-    if (
-      skillFilter &&
-      !job.skills?.some((skill) =>
-        skill.toLowerCase().includes(skillFilter.toLowerCase())
-      )
-    )
-      return false;
-    return true;
-  });
+  const getSubject = (job: JobEmail): string =>
+    job.subject || job.raw_email?.subject || "No subject";
 
-  const formatDeadline = (deadline?: string | null) => {
-    if (!deadline) return "No deadline";
-    const date = new Date(deadline);
+  const getSender = (job: JobEmail): string =>
+    job.sender || job.raw_email?.sender || "Unknown sender";
+
+  const getCompany = (job: JobEmail): string =>
+    job.company || "Unknown company";
+
+  const getDateValue = (job: JobEmail): string =>
+    job.date ||
+    job.dateReceived ||
+    job.created_at ||
+    job.raw_email?.date_received ||
+    "";
+
+  const formatRelativeDate = (dateString?: string): string => {
+    if (!dateString) return "-";
+
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "-";
+
     const now = new Date();
-    const diffMs = date.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    const diffMs = now.getTime() - date.getTime();
 
-    if (diffDays < 0) return "Expired";
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Tomorrow";
-    if (diffDays <= 7) return `${diffDays} days left`;
+    if (diffMs < 0) {
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
+
+    const minutes = Math.floor(diffMs / (1000 * 60));
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days === 1) return "Yesterday";
+    if (days < 7) return `${days}d ago`;
+
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
@@ -69,178 +123,257 @@ export default function Jobs() {
     });
   };
 
-  const handleViewDetails = (jobId: string) => {
-    navigate(`/email/${jobId}`);
+  const handleJobClick = (job: JobEmail) => {
+    const jobId = getJobId(job);
+
+    if (!jobId) {
+      console.warn("Cannot open job — missing id/_id fields:", job);
+      return;
+    }
+
+    navigate(`/job-email/${jobId}`, { state: { job } });
   };
+
+  // resume upload handlers
+  const handleResumeButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleResumeChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setResumeFile(file);
+    setResumeName(file.name);
+    setResumeMessage("");
+
+    const formData = new FormData();
+    formData.append("resume", file);
+
+    try {
+      setUploadingResume(true);
+
+      const res = await fetch("http://localhost:5000/api/resume/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error(`Resume upload failed: ${res.status}`);
+      }
+
+      const data = await res.json();
+      setResumeMessage(data?.message || "Resume uploaded successfully.");
+    } catch (err) {
+      console.error("Resume upload failed", err);
+      setResumeMessage("Resume upload failed. Please check backend API.");
+    } finally {
+      setUploadingResume(false);
+    }
+  };
+
+  const filteredJobs = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return jobs;
+
+    return jobs.filter((job) => {
+      const subject = getSubject(job).toLowerCase();
+      const sender = getSender(job).toLowerCase();
+      const company = getCompany(job).toLowerCase();
+
+      return (
+        subject.includes(term) ||
+        sender.includes(term) ||
+        company.includes(term)
+      );
+    });
+  }, [jobs, searchTerm]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-slate-50">
         <Navbar />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <p className="text-gray-600">Loading jobs...</p>
+        <div className="max-w-7xl mx-auto px-6 py-10 text-gray-600">
+          Loading job emails...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <Navbar />
+        <div className="max-w-7xl mx-auto px-6 py-10">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
+            <p className="text-red-700 font-medium">{error}</p>
+            <button
+              onClick={fetchJobEmails}
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700"
+            >
+              <RefreshCcw size={16} />
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <Navbar />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Job Opportunities</h1>
-          <p className="text-gray-600 mt-1">
-            {filteredJobs.length} job
-            {filteredJobs.length !== 1 ? "s" : ""} found
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+        {/* Heading */}
+        <div className="text-left">
+          <h1 className="text-3xl font-bold text-gray-900">Jobs</h1>
+          <p className="text-gray-600 mt-2">
+            Job-related emails curated from your inbox.
           </p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Filters</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Centered resume upload card */}
+        <div className="flex justify-center">
+          <div className="w-full max-w-2xl bg-white rounded-3xl border border-gray-200 shadow-sm p-8">
+            <div className="flex flex-col items-center text-center">
+              <div className="p-4 rounded-2xl bg-indigo-50 text-indigo-600 mb-4">
+                <FileText size={24} />
+              </div>
+
+              <p className="text-sm text-gray-500">Current Resume</p>
+              <h3 className="font-semibold text-gray-900 text-2xl mt-2">
+                {resumeName}
+              </h3>
+              <p className="text-sm text-gray-500 mt-2 max-w-lg">
+                Upload your latest resume here and use it as the default profile
+                for all job comparisons.
+              </p>
+
+              {/* hidden input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx"
+                className="hidden"
+                onChange={handleResumeChange}
+              />
+
+              <div className="flex flex-wrap justify-center gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={handleResumeButtonClick}
+                  disabled={uploadingResume}
+                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  <Upload size={16} />
+                  {uploadingResume ? "Uploading..." : "Upload Resume"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResumeButtonClick}
+                  disabled={uploadingResume}
+                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  <RefreshCcw size={16} />
+                  Change Resume
+                </button>
+              </div>
+
+              {resumeFile && (
+                <p className="text-sm text-gray-600 mt-4">
+                  Selected file: {resumeFile.name}
+                </p>
+              )}
+
+              {resumeMessage && (
+                <p className="text-sm mt-3 text-indigo-600 font-medium">
+                  {resumeMessage}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Job emails table */}
+        <section className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-gray-100 flex items-center justify-between gap-4 flex-wrap">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Company
-              </label>
-              <select
-                value={companyFilter}
-                onChange={(e) => setCompanyFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">All Companies</option>
-                {companies.map((company) => (
-                  <option key={company} value={company}>
-                    {company}
-                  </option>
-                ))}
-              </select>
+              <h2 className="text-xl font-semibold text-gray-900">Job Emails</h2>
+              <p className="text-gray-500 mt-1">
+                Click any row to view the complete email and compare it with your resume.
+              </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Location
-              </label>
-              <select
-                value={locationFilter}
-                onChange={(e) => setLocationFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">All Locations</option>
-                {locations.map((location) => (
-                  <option key={location} value={location}>
-                    {location}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Skills
-              </label>
+            <div className="relative w-full max-w-md">
+              <Search
+                size={18}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+              />
               <input
                 type="text"
-                placeholder="Search skills..."
-                value={skillFilter}
-                onChange={(e) => setSkillFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Search by subject, sender, or company..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 rounded-2xl border border-gray-200 outline-none focus:ring-2 focus:ring-indigo-200"
               />
             </div>
           </div>
 
-          {(companyFilter || locationFilter || skillFilter) && (
-            <button
-              onClick={() => {
-                setCompanyFilter("");
-                setLocationFilter("");
-                setSkillFilter("");
-              }}
-              className="mt-4 text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Clear all filters
-            </button>
-          )}
-        </div>
+          <div className="hidden md:grid grid-cols-12 px-6 py-4 bg-gray-50 text-sm font-semibold text-gray-500">
+            <div className="col-span-5">Subject</div>
+            <div className="col-span-4">Sender / Company</div>
+            <div className="col-span-2">Date</div>
+            <div className="col-span-1 text-right">Open</div>
+          </div>
 
-        <div className="space-y-4">
-          {filteredJobs.map((job) => (
-            <div
-              key={job.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    {job.job_title || job.raw_email?.subject || "Job Opportunity"}
-                  </h3>
-
-                  <div className="flex flex-wrap gap-4 mb-4">
-                    {job.company && (
-                      <div className="flex items-center text-gray-600">
-                        <Briefcase className="h-4 w-4 mr-2" />
-                        <span className="text-sm">{job.company}</span>
-                      </div>
-                    )}
-
-                    {job.location && (
-                      <div className="flex items-center text-gray-600">
-                        <MapPin className="h-4 w-4 mr-2" />
-                        <span className="text-sm">{job.location}</span>
-                      </div>
-                    )}
-
-                    {job.application_deadline && (
-                      <div className="flex items-center text-gray-600">
-                        <Calendar className="h-4 w-4 mr-2" />
-                        <span className="text-sm">
-                          {formatDeadline(job.application_deadline)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {job.experience_level && (
-                    <p className="text-sm text-gray-600 mb-3">
-                      <span className="font-medium">Experience:</span>{" "}
-                      {job.experience_level}
-                    </p>
-                  )}
-
-                  {job.skills && job.skills.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {job.skills.map((skill, index) => (
-                        <span
-                          key={index}
-                          className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium"
-                        >
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => handleViewDetails(job.id)}
-                  className="ml-4 flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <span>View Details</span>
-                  <ExternalLink className="h-4 w-4" />
-                </button>
+          <div>
+            {filteredJobs.length === 0 ? (
+              <div className="px-6 py-10 text-center text-gray-500">
+                No job emails found.
               </div>
-            </div>
-          ))}
+            ) : (
+              filteredJobs.map((job, index) => {
+                const jobId = getJobId(job);
+                const subject = getSubject(job);
+                const sender = getSender(job);
+                const company = getCompany(job);
+                const dateValue = getDateValue(job);
 
-          {filteredJobs.length === 0 && (
-            <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
-              <p className="text-gray-500">
-                No jobs found matching your filters
-              </p>
-            </div>
-          )}
-        </div>
+                return (
+                  <button
+                    key={jobId || index}
+                    type="button"
+                    onClick={() => handleJobClick(job)}
+                    className="w-full grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-0 px-6 py-5 border-b border-gray-100 hover:bg-gray-50 transition text-left"
+                  >
+                    <div className="md:col-span-5">
+                      <p className="font-semibold text-gray-900 line-clamp-2">
+                        {subject}
+                      </p>
+                    </div>
+
+                    <div className="md:col-span-4">
+                      <p className="text-gray-800">{sender}</p>
+                      <p className="text-sm text-gray-500">{company}</p>
+                    </div>
+
+                    <div className="md:col-span-2 text-sm text-gray-500">
+                      {formatRelativeDate(dateValue)}
+                    </div>
+
+                    <div className="md:col-span-1 flex md:justify-end text-indigo-600">
+                      <ChevronRight size={20} />
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

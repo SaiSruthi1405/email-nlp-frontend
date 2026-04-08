@@ -1,158 +1,436 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, ExternalLink, Mail, User, Calendar } from "lucide-react";
+// src/pages/Jobs.tsx
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  Upload,
+  FileText,
+  RefreshCcw,
+  Search,
+  ChevronRight,
+} from "lucide-react";
 import Navbar from "../components/Navbar";
 
-type RawEmail = {
-  _id: string;
+type ClassifiedJobEmail = {
+  id: string;              // from backend
   subject: string;
   sender: string;
-  body: string;
   dateReceived: string;
-  gmailId: string;
+  gmailId?: string;
+  category: string;        // "jobs", "important", "others", ...
+  snippet?: string;
 };
 
-export default function EmailDetails() {
-  const { id } = useParams<{ id: string }>();
+export default function Jobs() {
   const navigate = useNavigate();
-
-  const [email, setEmail] = useState<RawEmail | null>(null);
+  const [search, setSearch] = useState("");
+  const [jobEmails, setJobEmails] = useState<ClassifiedJobEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchEmail = async () => {
+    const fetchJobs = async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/emails/${id}`);
-        if (!res.ok) {
-          throw new Error("Email not found");
-        }
-        const data = await res.json();
-        setEmail({
-          _id: data._id,
-          subject: data.subject || "(no subject)",
-          sender: data.sender || "",
-          body: data.body || "",
-          dateReceived: data.dateReceived,
-          gmailId: data.gmailId,
-        });
+        const res = await fetch("http://localhost:5000/api/emails");
+        if (!res.ok) throw new Error("Failed to load emails");
+        const data: ClassifiedJobEmail[] = await res.json();
+
+        // only keep category === "jobs"
+        const jobsOnly = data.filter((email) => email.category === "jobs");
+        setJobEmails(jobsOnly);
       } catch (err) {
-        console.error("Failed to load email", err);
-        setError("Could not load email");
+        console.error("Failed to load job emails", err);
+        setError("Could not load job emails");
       } finally {
         setLoading(false);
       }
     };
 
-    if (id) {
-      fetchEmail();
-    }
-  }, [id]);
+    fetchJobs();
+  }, []);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString("en-US", {
+  const formatDate = (iso?: string) => {
+    if (!iso) return "-";
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "-";
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+
+    return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
     });
   };
 
+  const filteredJobs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return jobEmails;
+
+    return jobEmails.filter(
+      (j) =>
+        j.subject?.toLowerCase().includes(q) ||
+        j.sender?.toLowerCase().includes(q) ||
+        j.snippet?.toLowerCase().includes(q)
+    );
+  }, [jobEmails, search]);
+
+  // IMPORTANT: use the classified email id and your JobEmailDetails route
+  const handleOpenJob = (id: string) => {
+    navigate(`/job-email/${id}`);
+  };
+
+  const handleUploadResume = () => navigate("/resume-upload");
+  const handleChangeResume = () => navigate("/resume-upload");
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div style={styles.page}>
         <Navbar />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <p className="text-gray-600">Loading email...</p>
-        </div>
+        <main style={styles.main}>
+          <p style={styles.infoText}>Loading job emails...</p>
+        </main>
       </div>
     );
   }
 
-  if (error || !email) {
+  if (error) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div style={styles.page}>
         <Navbar />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              Email Not Found
-            </h2>
-            <button
-              onClick={() => navigate("/inbox")}  // <-- back to Inbox route
-              className="text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Return to Inbox
-            </button>
-          </div>
-        </div>
+        <main style={styles.main}>
+          <p style={styles.errorText}>{error}</p>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div style={styles.page}>
       <Navbar />
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center text-gray-600 hover:text-gray-900 mb-6 font-medium"
-        >
-          <ArrowLeft className="h-5 w-5 mr-2" />
-          Back
-        </button>
+      <main style={styles.main}>
+        <section style={styles.headerBlock}>
+          <div>
+            <h1 style={styles.title}>Jobs</h1>
+            <p style={styles.subtitle}>
+              Job-related emails curated from your inbox.
+            </p>
+          </div>
+        </section>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <h1 className="text-2xl font-bold text-gray-900 mb-3">
-                  {email.subject}
-                </h1>
-
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center text-gray-600">
-                    <User className="h-4 w-4 mr-2" />
-                    <span className="font-medium mr-2">From:</span>
-                    <span>{email.sender}</span>
-                  </div>
-
-                  <div className="flex items-center text-gray-600">
-                    <Calendar className="h-4 w-4 mr-2" />
-                    <span className="font-medium mr-2">Date:</span>
-                    <span>{formatDate(email.dateReceived)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <a
-                href={`https://mail.google.com/mail/u/0/#search/rfc822msgid:${encodeURIComponent(
-                  email.gmailId
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-4 flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Mail className="h-4 w-4" />
-                <span>Open in Gmail</span>
-                <ExternalLink className="h-4 w-4" />
-              </a>
+        {/* Resume card */}
+        <section style={styles.resumeCard}>
+          <div style={styles.resumeLeft}>
+            <div style={styles.resumeIconWrap}>
+              <FileText size={22} color="#3563E9" />
+            </div>
+            <div>
+              <p style={styles.resumeLabel}>Current Resume</p>
+              <h2 style={styles.resumeName}>Sai_Sruthi_Resume.pdf</h2>
+              <p style={styles.resumeMeta}>
+                Used as the default profile for all job comparisons.
+              </p>
             </div>
           </div>
 
-          <div className="p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Email Content
-            </h2>
-            <div className="prose max-w-none text-gray-700 bg-gray-50 p-4 rounded-lg">
-              <p className="whitespace-pre-wrap">{email.body}</p>
+          <div style={styles.resumeActions}>
+            <button style={styles.secondaryButton} onClick={handleUploadResume}>
+              <Upload size={16} />
+              Upload Resume
+            </button>
+            <button style={styles.primaryButton} onClick={handleChangeResume}>
+              <RefreshCcw size={16} />
+              Change Resume
+            </button>
+          </div>
+        </section>
+
+        {/* Jobs table */}
+        <section style={styles.tableCard}>
+          <div style={styles.tableToolbar}>
+            <div>
+              <h3 style={styles.tableTitle}>Job Emails</h3>
+              <p style={styles.tableSubtitle}>
+                Click any row to view the complete email and compare it with your resume.
+              </p>
+            </div>
+
+            <div style={styles.searchWrap}>
+              <Search size={16} color="#6B7280" />
+              <input
+                type="text"
+                placeholder="Search jobs"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={styles.searchInput}
+              />
             </div>
           </div>
-        </div>
-      </div>
+
+          <div style={styles.tableScroll}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Subject</th>
+                  <th style={styles.th}>Sender</th>
+                  <th style={styles.th}>Date</th>
+                  <th style={{ ...styles.th, textAlign: "right" }}>Open</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredJobs.map((job) => (
+                  <tr
+                    key={job.id}
+                    style={styles.row}
+                    onClick={() => handleOpenJob(job.id)}
+                  >
+                    <td style={styles.tdSubject}>
+                      <div style={styles.subjectText}>
+                        {job.subject || "No subject"}
+                      </div>
+                    </td>
+                    <td style={styles.td}>
+                      <div style={styles.senderText}>
+                        {job.sender || "Unknown sender"}
+                      </div>
+                    </td>
+                    <td style={styles.tdMuted}>
+                      {formatDate(job.dateReceived)}
+                    </td>
+                    <td style={styles.tdArrow}>
+                      <ChevronRight size={18} color="#3563E9" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredJobs.length === 0 && (
+            <div style={styles.emptyState}>
+              No job emails match your search.
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
+
+const styles: { [key: string]: React.CSSProperties } = {
+  page: {
+    minHeight: "100vh",
+    background: "#F5F7FB",
+    color: "#111827",
+  },
+  main: {
+    maxWidth: "1200px",
+    margin: "0 auto",
+    padding: "32px 24px 48px",
+  },
+  headerBlock: {
+    marginBottom: "24px",
+  },
+  title: {
+    fontSize: "40px",
+    lineHeight: 1.1,
+    margin: 0,
+    fontWeight: 700,
+    color: "#111827",
+  },
+  subtitle: {
+    marginTop: "8px",
+    marginBottom: 0,
+    color: "#6B7280",
+    fontSize: "16px",
+  },
+  resumeCard: {
+    background: "#FFFFFF",
+    border: "1px solid #E5E7EB",
+    borderRadius: "20px",
+    padding: "24px",
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "20px",
+    alignItems: "center",
+    flexWrap: "wrap",
+    boxShadow: "0 10px 30px rgba(17, 24, 39, 0.05)",
+    marginBottom: "24px",
+  },
+  resumeLeft: {
+    display: "flex",
+    gap: "16px",
+    alignItems: "center",
+  },
+  resumeIconWrap: {
+    width: "52px",
+    height: "52px",
+    borderRadius: "16px",
+    background: "#EEF4FF",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  resumeLabel: {
+    margin: 0,
+    color: "#6B7280",
+    fontSize: "13px",
+    fontWeight: 600,
+  },
+  resumeName: {
+    margin: "6px 0 4px",
+    fontSize: "20px",
+    color: "#111827",
+  },
+  resumeMeta: {
+    margin: 0,
+    color: "#6B7280",
+    fontSize: "14px",
+  },
+  resumeActions: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+  primaryButton: {
+    border: "none",
+    background: "#3563E9",
+    color: "#FFFFFF",
+    padding: "12px 16px",
+    borderRadius: "12px",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "14px",
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  secondaryButton: {
+    border: "1px solid #D1D5DB",
+    background: "#FFFFFF",
+    color: "#374151",
+    padding: "12px 16px",
+    borderRadius: "12px",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "14px",
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  tableCard: {
+    background: "#FFFFFF",
+    border: "1px solid #E5E7EB",
+    borderRadius: "20px",
+    overflow: "hidden",
+    boxShadow: "0 10px 30px rgba(17, 24, 39, 0.05)",
+  },
+  tableToolbar: {
+    padding: "20px 24px",
+    borderBottom: "1px solid #E5E7EB",
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "16px",
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+  tableTitle: {
+    margin: 0,
+    fontSize: "20px",
+    color: "#111827",
+  },
+  tableSubtitle: {
+    margin: "6px 0 0",
+    fontSize: "14px",
+    color: "#6B7280",
+  },
+  searchWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    border: "1px solid #E5E7EB",
+    borderRadius: "12px",
+    padding: "10px 12px",
+    minWidth: "250px",
+    background: "#F9FAFB",
+  },
+  searchInput: {
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    width: "100%",
+    fontSize: "14px",
+    color: "#111827",
+  },
+  tableScroll: {
+    overflowX: "auto",
+  },
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+  },
+  th: {
+    textAlign: "left",
+    padding: "16px 24px",
+    fontSize: "12px",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "#6B7280",
+    background: "#F9FAFB",
+    borderBottom: "1px solid #E5E7EB",
+  },
+  row: {
+    cursor: "pointer",
+    borderBottom: "1px solid #F0F2F5",
+  },
+  td: {
+    padding: "18px 24px",
+    verticalAlign: "middle",
+  },
+  tdSubject: {
+    padding: "18px 24px",
+    verticalAlign: "middle",
+    minWidth: "420px",
+  },
+  tdMuted: {
+    padding: "18px 24px",
+    color: "#6B7280",
+    whiteSpace: "nowrap",
+  },
+  tdArrow: {
+    padding: "18px 24px",
+    textAlign: "right",
+    whiteSpace: "nowrap",
+  },
+  subjectText: {
+    fontSize: "15px",
+    fontWeight: 600,
+    color: "#111827",
+  },
+  senderText: {
+    fontSize: "14px",
+    fontWeight: 500,
+    color: "#111827",
+  },
+  emptyState: {
+    padding: "28px 24px",
+    textAlign: "center",
+    color: "#6B7280",
+    fontSize: "14px",
+  },
+  infoText: {
+    color: "#6B7280",
+    fontSize: "16px",
+  },
+  errorText: {
+    color: "#DC2626",
+    fontSize: "16px",
+  },
+};

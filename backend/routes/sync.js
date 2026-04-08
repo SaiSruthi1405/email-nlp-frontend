@@ -12,7 +12,6 @@ function extractBody(payload) {
 
   // direct body
   if (payload.body && payload.body.data) {
-    // Gmail uses base64url encoding [web:195][web:198]
     let data = payload.body.data.replace(/-/g, "+").replace(/_/g, "/");
     while (data.length % 4) data += "=";
     const buff = Buffer.from(data, "base64");
@@ -33,7 +32,6 @@ function extractBody(payload) {
 // POST /api/sync-emails
 router.post("/sync-emails", async (req, res) => {
   try {
-    // for now, always use your own Gmail
     const user = await User.findOne({});
     console.log("USER TOKEN FROM DB:", user && user.gmailToken);
     if (!user || !user.gmailToken) {
@@ -46,15 +44,14 @@ router.post("/sync-emails", async (req, res) => {
 
     const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-    // === 1) Fetch many messages with pagination ===
-    const MAX_TO_SYNC = 200; // adjust this as you like (e.g. 500)
+    const MAX_TO_SYNC = 200;
     let allMessages = [];
     let pageToken = undefined;
 
     while (allMessages.length < MAX_TO_SYNC) {
       const listRes = await gmail.users.messages.list({
         userId: "me",
-        maxResults: 100, // Gmail max is 500 per request [web:195]
+        maxResults: 100,
         pageToken,
       });
 
@@ -62,14 +59,13 @@ router.post("/sync-emails", async (req, res) => {
       allMessages = allMessages.concat(messages);
 
       pageToken = listRes.data.nextPageToken;
-      if (!pageToken) break; // no more pages [web:193][web:197]
+      if (!pageToken) break;
     }
 
     console.log("GMAIL: fetched message IDs:", allMessages.length);
 
     const results = [];
 
-    // === 2) Process each message (dedupe + classify + save) ===
     for (const msg of allMessages) {
       const full = await gmail.users.messages.get({
         userId: "me",
@@ -90,20 +86,16 @@ router.post("/sync-emails", async (req, res) => {
 
       console.log("PROCESSING:", msg.id, "|", subject, "|", date);
 
-
-      // 1) CHECK FOR EXISTING RAW EMAIL BY gmailId + userId
       const existing = await RawEmail.findOne({
         gmailId: msg.id,
         userId: user._id,
       });
       console.log("PROCESSING:", msg.id, "|", subject, "|", date);
-      // extract real body text
       const bodyText = extractBody(payload) || "";
 
       if (existing) {
-        // re-classify existing emails so old "others" can be updated
         let category = existing.category || "others";
-         console.log("ALREADY EXISTS:", msg.id, "|", subject);
+        console.log("ALREADY EXISTS:", msg.id, "|", subject);
         try {
           category = await classifyEmail(subject || "", bodyText || "");
         } catch (e) {
@@ -123,7 +115,6 @@ router.post("/sync-emails", async (req, res) => {
         continue;
       }
 
-      // Call Python classifier for new email
       let category = "others";
       try {
         category = await classifyEmail(subject || "", bodyText || "");
@@ -138,7 +129,7 @@ router.post("/sync-emails", async (req, res) => {
         body: bodyText,
         dateReceived: date ? new Date(date) : new Date(),
         gmailId: msg.id,
-        category, // store ML category
+        category,
       });
 
       await rawEmail.save();
@@ -174,7 +165,7 @@ router.get("/emails", async (req, res) => {
       return res.status(401).json({ error: "User not found" });
     }
 
-    const emails = await RawEmail.find({ userId: user._id})
+    const emails = await RawEmail.find({ userId: user._id })
       .sort({ dateReceived: -1 })
       .select("subject sender dateReceived gmailId body category")
       .lean();
@@ -199,6 +190,11 @@ router.get("/emails", async (req, res) => {
 // GET /api/emails/:id - single email for EmailDetails
 router.get("/emails/:id", async (req, res) => {
   try {
+    // ✅ ADDED: block non-ObjectId values like "jobs", "debug" from reaching findOne
+    if (!req.params.id.match(/^[a-fA-F0-9]{24}$/)) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
     const user = await User.findOne({});
     if (!user) {
       return res.status(401).json({ error: "User not found" });

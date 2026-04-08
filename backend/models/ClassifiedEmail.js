@@ -1,34 +1,26 @@
 const mongoose = require("mongoose");
 
-const classifiedEmailSchema = new mongoose.Schema(
+const ClassifiedEmailSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    rawEmailId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "RawEmail",
-      required: true,
-    },
-    category: { type: String, enum: ["job", "event", "important", "others", "spam"], required: true },
-    priority: { type: String, enum: ["high", "medium", "low"], required: true },
-    spamScore: { type: Number, required: true },
-    jobTitle: String,
-    company: String,
-    location: String,
-    experienceLevel: String,
-    skills: [String],
-    applicationDeadline: Date,
-    eventTitle: String,
-    eventDate: Date,
-    eventLocation: String,
-    organizer: String,
-    meetingLink: String,
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    rawEmailId: { type: mongoose.Schema.Types.ObjectId, ref: "RawEmail" },
+    category: { type: String, default: "others" },
+    priority: { type: String },
+    spamScore: { type: Number },
+    jobTitle: { type: String },
+    company: { type: String },
+    location: { type: String },
+    experienceLevel: { type: String },
+    skills: [{ type: String }],
+    applicationDeadline: { type: Date },
+    eventTitle: { type: String },
+    eventDate: { type: Date },
+    eventLocation: { type: String },
+    organizer: { type: String },
+    meetingLink: { type: String },
     reminderSet: { type: Boolean, default: false },
   },
-  { timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } }
+  { timestamps: true }
 );
 
-module.exports = mongoose.model(
-  "ClassifiedEmail",
-  classifiedEmailSchema,
-  "classifiedEmails" // exact name you see with data
-);
+module.exports = mongoose.model("ClassifiedEmail", ClassifiedEmailSchema);
