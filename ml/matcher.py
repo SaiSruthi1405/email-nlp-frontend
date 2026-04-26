@@ -13,20 +13,76 @@ for key, val in SKILL_DB.items():
     for form in val["low_surface_forms"]:
         VALID_SKILLS.add(form.lower().strip())
 
+# Tokens we want to always ignore as non-skills
+NOISE_WORDS = {
+    "linkedin",
+    "gmail",
+    "email",
+    "mail",
+    "hello",
+    "hi",
+    "regards",
+    "thanks",
+    "thank",
+    "click",
+    "apply",
+    "unsubscribe",
+    "job",
+    "role",
+    "position",
+    "company",
+    "dear",
+    "sir",
+    "madam",
+    "please",
+}
+
+
+def _filter_noise(skills):
+    """
+    Remove obvious non-skill tokens like 'linkedin' from extracted skills.
+    """
+    return [s for s in skills if s.lower().strip() not in NOISE_WORDS]
+
 
 def match(resume_text, job_email_body):
+    # Raw extraction from parser
     resume_skills_raw = extract_skills(resume_text)
-    job_skills = extract_skills(job_email_body)
+    job_skills_raw = extract_skills(job_email_body)
 
-    if not job_skills:
-        return {"error": "No skills found in job email"}
+    # Drop noise tokens like "linkedin"
+    job_skills_raw = _filter_noise(job_skills_raw)
+    resume_skills_raw = _filter_noise(resume_skills_raw)
+
+    # If still no job skills, return a "valid but empty" result,
+    # not an error, so the frontend doesn't break.
+    if not job_skills_raw:
+        return {
+            "match_score": 0.0,
+            "matched_skills": [],
+            "missing_skills": [],
+            "suggestions": {},
+            "resume_skills": [],
+            "job_skills": [],
+            "message": "No skills found in job email",
+        }
 
     # Filter resume skills — only keep ones validated by SKILL_DB surface forms
-    resume_skills = [s for s in resume_skills_raw if s in VALID_SKILLS]
+    resume_skills = [
+        s for s in resume_skills_raw if s.lower().strip() in VALID_SKILLS
+    ]
+
+    # Remove duplicates and normalize lowercase
+    job_skills = sorted({s.lower().strip() for s in job_skills_raw})
+    resume_skills = sorted({s.lower().strip() for s in resume_skills})
 
     matched = [s for s in job_skills if s in resume_skills]
     missing = [s for s in job_skills if s not in resume_skills]
-    score = round((len(matched) / len(job_skills)) * 100, 2)
+
+    if job_skills:
+        score = round((len(matched) / len(job_skills)) * 100.0, 2)
+    else:
+        score = 0.0
 
     suggestions = {
         skill: f"Learn {skill} — search on YouTube or Coursera"
@@ -34,10 +90,10 @@ def match(resume_text, job_email_body):
     }
 
     return {
-        "match_score": f"{score}%",
+        "match_score": score,  # numeric, easier for frontend
         "matched_skills": matched,
         "missing_skills": missing,
         "suggestions": suggestions,
         "resume_skills": resume_skills,
-        "job_skills": job_skills
+        "job_skills": job_skills,
     }

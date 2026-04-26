@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronRight, Search, Upload, RefreshCcw, FileText } from "lucide-react";
+import {
+  ChevronRight,
+  Search,
+  Upload,
+  RefreshCcw,
+  FileText,
+} from "lucide-react";
 import Navbar from "../components/Navbar";
 
 type RawEmailBackend = {
@@ -11,8 +17,10 @@ type RawEmailBackend = {
   gmail_id?: string;
 };
 
+type MongoIdLike = string | { $oid?: string };
+
 type JobEmail = {
-  _id?: string;
+  _id?: MongoIdLike;
   id?: string;
   category?: string;
   company?: string;
@@ -23,6 +31,7 @@ type JobEmail = {
   dateReceived?: string;
   rawemail?: any;
   raw_email?: RawEmailBackend;
+  body?: string;
 };
 
 export default function Jobs() {
@@ -33,12 +42,19 @@ export default function Jobs() {
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  // resume upload state
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [resumeName, setResumeName] = useState("Sai_Sruthi_Resume.pdf");
+  const [resumeName, setResumeName] = useState(
+    localStorage.getItem("resumeName") || ""
+  );
+  const [resumePath, setResumePath] = useState(
+    localStorage.getItem("resumePath") || ""
+  );
   const [uploadingResume, setUploadingResume] = useState(false);
   const [resumeMessage, setResumeMessage] = useState("");
+
+  const [comparing, setComparing] = useState(false);
+  const [matchResults, setMatchResults] = useState<Record<string, number>>({});
 
   const fetchJobEmails = async () => {
     try {
@@ -57,6 +73,7 @@ export default function Jobs() {
       }
 
       setJobs(data);
+      console.log("Jobs loaded:", data.length);
     } catch (err) {
       console.error("Failed to load job emails", err);
       setError("Could not load job emails");
@@ -70,8 +87,13 @@ export default function Jobs() {
     fetchJobEmails();
   }, []);
 
-  const getJobId = (job: JobEmail): string =>
-    String(job.id || job._id || "");
+  const getJobId = (job: JobEmail): string => {
+    const raw = job.id ?? job._id ?? "";
+    if (typeof raw === "object" && raw !== null) {
+      return String(raw.$oid ?? "");
+    }
+    return String(raw);
+  };
 
   const getSubject = (job: JobEmail): string =>
     job.subject || job.raw_email?.subject || "No subject";
@@ -79,8 +101,10 @@ export default function Jobs() {
   const getSender = (job: JobEmail): string =>
     job.sender || job.raw_email?.sender || "Unknown sender";
 
-  const getCompany = (job: JobEmail): string =>
-    job.company || "Unknown company";
+  const getCompany = (job: JobEmail): string => job.company || "";
+
+  const getBody = (job: JobEmail): string =>
+    job.body || job.raw_email?.body || job.rawemail?.body || "";
 
   const getDateValue = (job: JobEmail): string =>
     job.date ||
@@ -134,7 +158,6 @@ export default function Jobs() {
     navigate(`/job-email/${jobId}`, { state: { job } });
   };
 
-  // resume upload handlers
   const handleResumeButtonClick = () => {
     fileInputRef.current?.click();
   };
@@ -160,18 +183,54 @@ export default function Jobs() {
         body: formData,
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        throw new Error(`Resume upload failed: ${res.status}`);
+        throw new Error(data?.message || `Resume upload failed: ${res.status}`);
       }
 
-      const data = await res.json();
-      setResumeMessage(data?.message || "Resume uploaded successfully.");
-    } catch (err) {
+      const newResumePath: string =
+        data.path || data.resumePath || data.filePath || data.resume || "";
+
+      const resumeNameFromApi: string =
+        data.filename || data.originalname || file.name;
+
+      if (newResumePath) {
+        localStorage.setItem("resumePath", newResumePath);
+        setResumePath(newResumePath);
+      } else {
+        console.warn("Upload succeeded but no usable resume path came from backend.");
+      }
+
+      localStorage.setItem("resumeName", resumeNameFromApi);
+      setResumeName(resumeNameFromApi);
+
+      setResumeMessage(
+        data?.message ||
+          (newResumePath
+            ? "Resume uploaded successfully."
+            : "Upload worked, but resumePath is missing in backend response.")
+      );
+    } catch (err: any) {
       console.error("Resume upload failed", err);
-      setResumeMessage("Resume upload failed. Please check backend API.");
+      setResumeMessage(
+        err?.message || "Resume upload failed. Please check backend API."
+      );
     } finally {
       setUploadingResume(false);
     }
+  };
+
+  const buildJobText = (job: JobEmail): string => {
+    const subject = getSubject(job);
+    const sender = getSender(job);
+    const company = getCompany(job);
+    const body = getBody(job).trim();
+
+    return [subject, sender, company, body]
+      .filter((value) => value && String(value).trim() !== "")
+      .join("\n")
+      .trim();
   };
 
   const filteredJobs = useMemo(() => {
@@ -190,6 +249,101 @@ export default function Jobs() {
       );
     });
   }, [jobs, searchTerm]);
+
+  const handleCompareAll = async () => {
+    if (!resumePath) {
+      alert("Please upload a resume first.");
+      return;
+    }
+
+    if (filteredJobs.length === 0) {
+      alert("No job emails to compare.");
+      return;
+    }
+
+    try {
+      setComparing(true);
+
+      const jobsPayload = filteredJobs
+        .map((job) => {
+          const id = getJobId(job);
+          const subject = getSubject(job);
+          const sender = getSender(job);
+          const company = getCompany(job);
+          const body = getBody(job).trim();
+          const jobText = buildJobText(job);
+
+          return {
+            id,
+            subject,
+            sender,
+            company,
+            body,
+            jobText,
+          };
+        })
+        .filter((job) => job.id && job.jobText.length > 0);
+
+      if (jobsPayload.length === 0) {
+        throw new Error("No valid jobs with text found for comparison.");
+      }
+
+      const payload = {
+        resumePath,
+        jobs: jobsPayload,
+      };
+
+      const res = await fetch("http://localhost:5000/api/resume/compare-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        const message =
+          data?.detail ||
+          data?.details ||
+          data?.message ||
+          data?.error ||
+          `Compare failed: ${res.status}`;
+        throw new Error(message);
+      }
+
+      const map: Record<string, number> = {};
+
+      (data.results || []).forEach((item: any) => {
+        if (item.id !== undefined && item.id !== null) {
+          const key = String(item.id);
+          const pct = parseFloat(
+            String(
+              item.matchPercentage ??
+                item.match_percentage ??
+                item.score ??
+                0
+            )
+          );
+
+          map[key] = Number.isNaN(pct) ? 0 : pct;
+        }
+      });
+
+      setMatchResults(map);
+      setResumeMessage("Comparison completed successfully.");
+    } catch (err: any) {
+      console.error("Compare all jobs failed", err);
+      const message =
+        err?.message || "Comparison failed. Please check backend API.";
+      setResumeMessage(message);
+      alert(message);
+    } finally {
+      setComparing(false);
+    }
+  };
+
+  const compareDisabled =
+    comparing || !resumePath || filteredJobs.length === 0;
 
   if (loading) {
     return (
@@ -227,7 +381,6 @@ export default function Jobs() {
       <Navbar />
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* Heading */}
         <div className="text-left">
           <h1 className="text-3xl font-bold text-gray-900">Jobs</h1>
           <p className="text-gray-600 mt-2">
@@ -235,7 +388,6 @@ export default function Jobs() {
           </p>
         </div>
 
-        {/* Centered resume upload card */}
         <div className="flex justify-center">
           <div className="w-full max-w-2xl bg-white rounded-3xl border border-gray-200 shadow-sm p-8">
             <div className="flex flex-col items-center text-center">
@@ -245,14 +397,13 @@ export default function Jobs() {
 
               <p className="text-sm text-gray-500">Current Resume</p>
               <h3 className="font-semibold text-gray-900 text-2xl mt-2">
-                {resumeName}
+                {resumeName || "No resume uploaded"}
               </h3>
               <p className="text-sm text-gray-500 mt-2 max-w-lg">
                 Upload your latest resume here and use it as the default profile
                 for all job comparisons.
               </p>
 
-              {/* hidden input */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -281,10 +432,28 @@ export default function Jobs() {
                   <RefreshCcw size={16} />
                   Change Resume
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleCompareAll}
+                  disabled={compareDisabled}
+                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-indigo-600 text-indigo-600 hover:bg-indigo-50 disabled:opacity-60"
+                  title={
+                    !resumePath
+                      ? "Upload a resume first"
+                      : filteredJobs.length === 0
+                      ? "No jobs available to compare"
+                      : comparing
+                      ? "Comparison in progress"
+                      : "Compare your resume with the listed jobs"
+                  }
+                >
+                  {comparing ? "Comparing..." : "Compare Resume with Jobs"}
+                </button>
               </div>
 
               {resumeFile && (
-                <p className="text-sm text-gray-600 mt-4">
+                <p className="text-sm text-gray-600 mt-2">
                   Selected file: {resumeFile.name}
                 </p>
               )}
@@ -298,13 +467,15 @@ export default function Jobs() {
           </div>
         </div>
 
-        {/* Job emails table */}
         <section className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-100 flex items-center justify-between gap-4 flex-wrap">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">Job Emails</h2>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Job Emails
+              </h2>
               <p className="text-gray-500 mt-1">
-                Click any row to view the complete email and compare it with your resume.
+                Click any row to view the complete email and compare it with
+                your resume.
               </p>
             </div>
 
@@ -325,8 +496,9 @@ export default function Jobs() {
 
           <div className="hidden md:grid grid-cols-12 px-6 py-4 bg-gray-50 text-sm font-semibold text-gray-500">
             <div className="col-span-5">Subject</div>
-            <div className="col-span-4">Sender / Company</div>
+            <div className="col-span-3">Sender / Company</div>
             <div className="col-span-2">Date</div>
+            <div className="col-span-1">Match</div>
             <div className="col-span-1 text-right">Open</div>
           </div>
 
@@ -343,6 +515,11 @@ export default function Jobs() {
                 const company = getCompany(job);
                 const dateValue = getDateValue(job);
 
+                const match =
+                  jobId !== "" && matchResults[jobId] !== undefined
+                    ? matchResults[jobId]
+                    : undefined;
+
                 return (
                   <button
                     key={jobId || index}
@@ -356,13 +533,17 @@ export default function Jobs() {
                       </p>
                     </div>
 
-                    <div className="md:col-span-4">
+                    <div className="md:col-span-3">
                       <p className="text-gray-800">{sender}</p>
                       <p className="text-sm text-gray-500">{company}</p>
                     </div>
 
                     <div className="md:col-span-2 text-sm text-gray-500">
                       {formatRelativeDate(dateValue)}
+                    </div>
+
+                    <div className="md:col-span-1 text-sm font-semibold text-indigo-600">
+                      {typeof match === "number" ? `${match}%` : "-"}
                     </div>
 
                     <div className="md:col-span-1 flex md:justify-end text-indigo-600">

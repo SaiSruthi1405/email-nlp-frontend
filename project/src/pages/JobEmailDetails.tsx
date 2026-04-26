@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -13,13 +13,16 @@ import {
 } from "lucide-react";
 import Navbar from "../components/Navbar";
 
+type MongoIdLike = string | { $oid?: string };
+
 type JobEmail = {
-  _id?: string;
+  _id?: MongoIdLike;
   id?: string;
   subject?: string;
   sender?: string;
   body?: string;
   dateReceived?: string;
+  created_at?: string;
   gmailId?: string;
   company?: string;
   rawemail?: {
@@ -30,6 +33,7 @@ type JobEmail = {
     datereceived?: string;
     gmailId?: string;
     gmailid?: string;
+    date_received?: string;
   };
   raw_email?: {
     subject?: string;
@@ -39,6 +43,7 @@ type JobEmail = {
     datereceived?: string;
     gmailId?: string;
     gmailid?: string;
+    date_received?: string;
   };
 };
 
@@ -46,16 +51,16 @@ type JobLocationState = {
   job?: JobEmail;
 };
 
-type CompareResumeJobResponse = {
-  matchPercentage?: string;
+type CompareResponse = {
+  matchPercentage?: number;
+  match_percentage?: number;
+  score?: number;
   matchingSkills?: string[];
+  matching_skills?: string[];
   missingSkills?: string[];
-  summary?: {
-    jobSkills?: string[];
-    resumeSkills?: string[];
-    suggestions?: Record<string, string>;
-  };
-  error?: string;
+  missing_skills?: string[];
+  matched_skills?: string[];
+  missing_keywords?: string[];
 };
 
 export default function JobEmailDetails() {
@@ -72,24 +77,27 @@ export default function JobEmailDetails() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [resumeName, setResumeName] = useState("Sai_Sruthi_Resume.pdf");
+  const [resumeName, setResumeName] = useState(
+    localStorage.getItem("resumeName") || "No resume uploaded"
+  );
+  const [resumePath, setResumePath] = useState(
+    localStorage.getItem("resumePath") || ""
+  );
   const [uploadingResume, setUploadingResume] = useState(false);
   const [resumeMessage, setResumeMessage] = useState("");
-  const [resumePath, setResumePath] = useState<string>("");
 
   const [comparing, setComparing] = useState(false);
-  const [compareError, setCompareError] = useState("");
-  const [matchPercentage, setMatchPercentage] = useState("");
-  const [matchingSkills, setMatchingSkills] = useState<string[]>([
-    "HTML",
-    "CSS",
-    "JavaScript",
-    "React",
-  ]);
-  const [missingSkills, setMissingSkills] = useState<string[]>([
-    "Responsive Testing",
-    "System Design",
-  ]);
+  const [matchPercentage, setMatchPercentage] = useState<number | null>(null);
+  const [matchingSkills, setMatchingSkills] = useState<string[]>([]);
+  const [missingSkills, setMissingSkills] = useState<string[]>([]);
+
+  const getJobId = (job: JobEmail): string => {
+    const raw = job.id ?? job._id ?? "";
+    if (typeof raw === "object" && raw !== null) {
+      return String(raw.$oid ?? "");
+    }
+    return String(raw);
+  };
 
   useEffect(() => {
     if (stateJob) return;
@@ -113,7 +121,7 @@ export default function JobEmailDetails() {
         const data = await res.json();
         const jobs: JobEmail[] = Array.isArray(data) ? data : [];
 
-        const found = jobs.find((job) => job.id === id || job._id === id);
+        const found = jobs.find((job) => getJobId(job) === id);
 
         if (!found) {
           throw new Error("Job email not found");
@@ -135,10 +143,23 @@ export default function JobEmailDetails() {
 
   const subject = email?.subject || raw?.subject || "No subject";
   const sender = email?.sender || raw?.sender || "Unknown sender";
+  const company = email?.company || "";
   const body = email?.body || raw?.body || "No email content available.";
   const dateReceived =
-    email?.dateReceived || raw?.dateReceived || raw?.datereceived || "";
+    email?.dateReceived ||
+    email?.created_at ||
+    raw?.dateReceived ||
+    raw?.datereceived ||
+    raw?.date_received ||
+    "";
   const gmailId = email?.gmailId || raw?.gmailId || raw?.gmailid || "";
+
+  const jobText = useMemo(() => {
+    return [subject, sender, company, body]
+      .filter((value) => value && String(value).trim() !== "")
+      .join("\n")
+      .trim();
+  }, [subject, sender, company, body]);
 
   const formatDate = (dateString?: string): string => {
     if (!dateString) return "-";
@@ -169,9 +190,6 @@ export default function JobEmailDetails() {
     setResumeFile(file);
     setResumeName(file.name);
     setResumeMessage("");
-    setCompareError("");
-    setMatchPercentage("");
-    setShowComparison(false);
 
     const formData = new FormData();
     formData.append("resume", file);
@@ -190,38 +208,43 @@ export default function JobEmailDetails() {
         throw new Error(data?.message || `Resume upload failed: ${res.status}`);
       }
 
-      setResumeName(data.filename || file.name);
-      setResumePath(data.path || "");
-      setResumeMessage(data.message || "Resume uploaded successfully.");
+      const newResumePath =
+        data.path || data.resumePath || data.filePath || data.resume || "";
+      const newResumeName =
+        data.filename || data.originalname || file.name;
+
+      if (newResumePath) {
+        localStorage.setItem("resumePath", newResumePath);
+        setResumePath(newResumePath);
+      }
+
+      localStorage.setItem("resumeName", newResumeName);
+      setResumeName(newResumeName);
+
+      setResumeMessage(data?.message || "Resume uploaded successfully.");
     } catch (err: any) {
       console.error("Resume upload failed", err);
-      setResumeMessage("Resume upload failed. Please check backend API.");
-      setResumePath("");
+      setResumeMessage(
+        err?.message || "Resume upload failed. Please check backend API."
+      );
     } finally {
       setUploadingResume(false);
     }
   };
 
-  const handleCompareClick = async () => {
-    if (showComparison) {
-      setShowComparison(false);
-      return;
-    }
-
+  const handleCompare = async () => {
     if (!resumePath) {
-      setResumeMessage("Please upload your resume first.");
+      alert("Please upload a resume first.");
       return;
     }
 
-    if (!body || body === "No email content available.") {
-      setCompareError("Job email content is not available for comparison.");
-      setShowComparison(true);
+    if (!jobText.trim()) {
+      alert("No job text available for comparison.");
       return;
     }
 
     try {
       setComparing(true);
-      setCompareError("");
       setResumeMessage("");
       setShowComparison(true);
 
@@ -232,35 +255,45 @@ export default function JobEmailDetails() {
         },
         body: JSON.stringify({
           resumePath,
-          jobText: body,
+          jobText,
         }),
       });
 
-      const data: CompareResumeJobResponse = await res.json();
+      const data: CompareResponse & {
+        detail?: string;
+        error?: string;
+        message?: string;
+      } = await res.json();
 
-      if (!res.ok || data.error) {
-        throw new Error(data.error || "Failed to compare resume with job email");
+      if (!res.ok) {
+        throw new Error(
+          data?.detail || data?.message || data?.error || "Comparison failed"
+        );
       }
 
-      setMatchPercentage(data.matchPercentage || "");
+      const pct = Number(
+        data.matchPercentage ?? data.match_percentage ?? data.score ?? 0
+      );
+
+      setMatchPercentage(Number.isNaN(pct) ? 0 : pct);
       setMatchingSkills(
-        Array.isArray(data.matchingSkills) && data.matchingSkills.length > 0
-          ? data.matchingSkills
-          : []
+        data.matchingSkills ||
+          data.matching_skills ||
+          data.matched_skills ||
+          []
       );
       setMissingSkills(
-        Array.isArray(data.missingSkills) && data.missingSkills.length > 0
-          ? data.missingSkills
-          : []
+        data.missingSkills || data.missing_skills || data.missing_keywords || []
       );
     } catch (err: any) {
-      console.error("Resume comparison failed", err);
-      setCompareError(
-        err?.message || "Resume comparison failed. Please check backend API."
-      );
+      console.error("Single compare failed", err);
+      const message =
+        err?.message || "Comparison failed. Please check backend API.";
+      setResumeMessage(message);
+      setMatchPercentage(null);
       setMatchingSkills([]);
       setMissingSkills([]);
-      setMatchPercentage("");
+      alert(message);
     } finally {
       setComparing(false);
     }
@@ -386,7 +419,8 @@ export default function JobEmailDetails() {
                   {resumeName}
                 </h3>
                 <p className="text-sm text-gray-500 mt-2 max-w-lg">
-                  Upload or change your resume here and use it for comparison with this job email.
+                  Upload or change your resume here and use it for comparison with
+                  this job email.
                 </p>
 
                 <input
@@ -430,12 +464,6 @@ export default function JobEmailDetails() {
                     {resumeMessage}
                   </p>
                 )}
-
-                {resumePath && (
-                  <p className="text-xs mt-2 text-gray-500 break-all">
-                    (Saved path: {resumePath})
-                  </p>
-                )}
               </div>
             </div>
           </div>
@@ -444,16 +472,12 @@ export default function JobEmailDetails() {
             <div className="w-full max-w-2xl bg-white rounded-3xl border border-gray-200 shadow-sm p-6">
               <div className="flex justify-center">
                 <button
-                  onClick={handleCompareClick}
-                  disabled={comparing}
+                  onClick={handleCompare}
+                  disabled={comparing || !resumePath}
                   className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
                 >
                   <Sparkles size={16} />
-                  {comparing
-                    ? "Comparing..."
-                    : showComparison
-                    ? "Hide Resume Comparison"
-                    : "Compare with Resume"}
+                  {comparing ? "Comparing..." : "Compare with Resume"}
                 </button>
               </div>
 
@@ -463,16 +487,12 @@ export default function JobEmailDetails() {
                     <h3 className="text-lg font-semibold text-gray-900 text-center">
                       Resume Comparison
                     </h3>
-                    {matchPercentage && (
-                      <p className="text-center text-sm text-indigo-600 font-medium mt-2">
-                        Match Percentage: {matchPercentage}
-                      </p>
-                    )}
-                    {compareError && (
-                      <p className="text-center text-sm text-red-600 font-medium mt-2">
-                        {compareError}
-                      </p>
-                    )}
+                    <p className="text-center text-sm text-gray-500 mt-2">
+                      Match Percentage:{" "}
+                      <span className="font-semibold text-indigo-600">
+                        {matchPercentage !== null ? `${matchPercentage}%` : "-"}
+                      </span>
+                    </p>
                   </div>
 
                   <div>
@@ -490,9 +510,7 @@ export default function JobEmailDetails() {
                           </span>
                         ))
                       ) : (
-                        <p className="text-sm text-gray-500 text-center">
-                          No matching skills found.
-                        </p>
+                        <p className="text-sm text-gray-400">No matching skills found.</p>
                       )}
                     </div>
                   </div>
@@ -512,9 +530,7 @@ export default function JobEmailDetails() {
                           </span>
                         ))
                       ) : (
-                        <p className="text-sm text-gray-500 text-center">
-                          No missing skills found.
-                        </p>
+                        <p className="text-sm text-gray-400">No missing skills found.</p>
                       )}
                     </div>
                   </div>

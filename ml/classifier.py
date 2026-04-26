@@ -7,9 +7,6 @@ from tensorflow.keras.layers import TextVectorization
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 
-# ==============================================================================
-# Load Vectorizer from JSON vocab
-# ==============================================================================
 def load_vectorizer(path):
     with open(path, 'r') as f:
         vocab = json.load(f)
@@ -21,9 +18,6 @@ def load_vectorizer(path):
     print(f"  Vocab loaded: {path} ({len(vocab)} tokens)")
     return vec
 
-# ==============================================================================
-# Load Models
-# ==============================================================================
 print("Loading ML models...")
 spam_model      = tf.keras.models.load_model(os.path.join(MODEL_DIR, "spam_model.keras"))
 jobs_model      = tf.keras.models.load_model(os.path.join(MODEL_DIR, "jobs_model.keras"))
@@ -38,9 +32,6 @@ important_vec = load_vectorizer(os.path.join(MODEL_DIR, "important_vocab.json"))
 
 print("All loaded and ready!")
 
-# ==============================================================================
-# Thresholds
-# ==============================================================================
 SPAM_THRESHOLD      = 0.75
 JOBS_THRESHOLD      = 0.35
 EVENTS_THRESHOLD    = 0.35

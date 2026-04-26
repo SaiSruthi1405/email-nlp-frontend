@@ -12,8 +12,9 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
 
+# simple in-memory store for single-session resume text/skills
 resume_store = {}
 
 
@@ -62,6 +63,7 @@ def classify_bulk_route():
 
 @app.route("/upload-resume", methods=["POST"])
 def upload_resume():
+    # NOTE: make sure your Node/React side uses this field name: "resume_file"
     if "resume_file" not in request.files:
         return jsonify({"error": "No resume file provided"}), 400
 
@@ -83,11 +85,14 @@ def upload_resume():
     resume_store["skills"] = skills
     resume_store["path"] = save_path
 
-    return jsonify({
-        "message": "Resume uploaded!",
-        "skills_found": skills,
-        "resumePath": save_path
-    })
+    return jsonify(
+        {
+            "message": "Resume uploaded!",
+            "skills_found": skills,
+            "resumePath": save_path,
+            "filename": filename,
+        }
+    )
 
 
 @app.route("/match", methods=["POST"])
@@ -125,19 +130,35 @@ def compare_resume_job():
 
         result = match(resume_text, job_text)
 
-        if "error" in result:
-            return jsonify(result), 400
+        # Normalize match_score to a numeric percentage
+        raw_score = result.get("match_score", 0)
+        if isinstance(raw_score, str) and raw_score.endswith("%"):
+            try:
+                score_num = float(raw_score.rstrip("%"))
+            except ValueError:
+                score_num = 0.0
+        else:
+            try:
+                score_num = float(raw_score)
+            except (TypeError, ValueError):
+                score_num = 0.0
 
-        return jsonify({
-            "matchPercentage": result.get("match_score", "0%"),
+        response = {
+            "matchPercentage": score_num,
             "matchingSkills": result.get("matched_skills", []),
             "missingSkills": result.get("missing_skills", []),
             "summary": {
                 "resumeSkills": result.get("resume_skills", []),
                 "jobSkills": result.get("job_skills", []),
-                "suggestions": result.get("suggestions", {})
-            }
-        })
+                "suggestions": result.get("suggestions", {}),
+            },
+        }
+
+        # If matcher decided there were no skills, add the message but keep 200
+        if "message" in result:
+            response["message"] = result["message"]
+
+        return jsonify(response)
 
     except Exception as e:
         app.logger.exception("COMPARE RESUME JOB ERROR")
@@ -145,4 +166,5 @@ def compare_resume_job():
 
 
 if __name__ == "__main__":
+    # In production, you would use gunicorn/uwsgi; debug=True is fine for dev
     app.run(host="0.0.0.0", port=8001, debug=True)

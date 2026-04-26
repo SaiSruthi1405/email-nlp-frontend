@@ -7,6 +7,7 @@ import Events from "./pages/Events";
 import Settings from "./pages/Settings";
 import EmailDetails from "./pages/EmailDetails";
 import JobEmailDetails from "./pages/JobEmailDetails";
+import EventEmailDetail from "./pages/EventEmailDetail";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/events" element={<Events />} />
+        <Route path="/events/:id" element={<EventEmailDetail />} />
         <Route path="/settings" element={<Settings />} />
 
         {/* Normal inbox mail detail */}
